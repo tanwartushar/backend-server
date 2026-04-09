@@ -75,7 +75,7 @@ server.on('upgrade', (request, socket, head) => {
   if (url.pathname.startsWith('/api/collaboration/ws/')) {
     const docName = url.pathname.split('/').pop() || 'default';
     console.log(`[COLLAB-WS] Handling upgrade for docName: ${docName}`);
-    wss.handleUpgrade(request, socket, head, (ws) => {
+    wss.handleUpgrade(request, socket, head, (ws: any) => {
       wss.emit('connection', ws, request, { docName });
     });
   } else {
