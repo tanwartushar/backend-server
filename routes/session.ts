@@ -223,6 +223,10 @@ router.patch('/sessions/:id/terminate', async (req: Request, res: Response): Pro
             return res.status(404).json({ error: 'Session not found' });
         }
 
+        if (session.status === 'terminated') {
+            return res.status(403).json({ error: 'Session permanently terminated' });
+        }
+
         if (session.user1Id !== authUserId && session.user2Id !== authUserId) {
             return res.status(403).json({ error: 'Forbidden' });
         }
