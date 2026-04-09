@@ -39,18 +39,23 @@ SessionManager.init(prisma, Yjs);
 
 wss.on('connection', async (conn: any, req: any, { docName }: any) => {
   console.log(`[WS] Connection established for docName: ${docName}`);
-  
+
   // 1. establish the connection which internally creates and registers the Y.Doc in the docs map.
   setupWSConnection(conn, req, { docName, gc: true });
-  
+
   const ydoc = docs.get(docName);
-  
+
   // 2. fetch Prisma state and safely save the official `ydoc` instance.
-  // yjs native applyUpdate mechanism will automatically broadcast these restored bytes to the newly connected client
   try {
     const session = await prisma.session.findUnique({
       where: { id: docName }
     });
+    if (session && session.status === 'terminated') {
+        console.log(`[WS] Rejecting connection because session is terminated: ${docName}`);
+        conn.close(4000, 'Session has been permanently terminated.');
+        return;
+    }
+
     if (session && session.docState && ydoc) {
       Yjs.applyUpdate(ydoc, session.docState);
     }
@@ -64,36 +69,22 @@ wss.on('connection', async (conn: any, req: any, { docName }: any) => {
 });
 
 server.on('upgrade', (request, socket, head) => {
-    console.log(`[COLLAB-WS] Upgrade request received! URL: ${request.url}`);
-    const url = new URL(request.url || '', `http://${request.headers.host}`);
-    console.log(`[COLLAB-WS] Parsed pathname: ${url.pathname}`);
-    // expected ws url: /api/collaboration/ws/:sessionId
-    if (url.pathname.startsWith('/api/collaboration/ws/')) {
-      const docName = url.pathname.split('/').pop() || 'default';
-      console.log(`[COLLAB-WS] Handling upgrade for docName: ${docName}`);
-      
-      // explicitly reject terminated sessions to prevent y-websocket ghost reconnection loops
-      prisma.session.findUnique({ where: { id: docName } }).then(session => {
-          if (session && session.status === 'terminated') {
-              console.log(`[COLLAB-WS] Rejected upgrade for terminated session ${docName}`);
-              socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
-              socket.destroy();
-              return;
-          }
-  
-          wss.handleUpgrade(request, socket, head, (ws: any) => {
-            wss.emit('connection', ws, request, { docName });
-          });
-      }).catch(err => {
-          socket.destroy();
-      });
-    } else {
-      console.log(`[COLLAB-WS] Rejected upgrade, path mismatch`);
-      socket.destroy();
-    }
-  });
-  
-  server.listen(PORT, () => {
-    console.log(`Collaboration service listening on port ${PORT}`);
-  });
-  
+  console.log(`[COLLAB-WS] Upgrade request received! URL: ${request.url}`);
+  const url = new URL(request.url || '', `http://${request.headers.host}`);
+  console.log(`[COLLAB-WS] Parsed pathname: ${url.pathname}`);
+  // expected ws url: /api/collaboration/ws/:sessionId
+  if (url.pathname.startsWith('/api/collaboration/ws/')) {
+    const docName = url.pathname.split('/').pop() || 'default';
+    console.log(`[COLLAB-WS] Handling upgrade for docName: ${docName}`);
+    wss.handleUpgrade(request, socket, head, (ws: any) => {
+      wss.emit('connection', ws, request, { docName });
+    });
+  } else {
+    console.log(`[COLLAB-WS] Rejected upgrade, path mismatch`);
+    socket.destroy();
+  }
+});
+
+server.listen(PORT, () => {
+  console.log(`Collaboration service listening on port ${PORT}`);
+});
