@@ -34,34 +34,30 @@ const server = createServer(app);
 
 const wss = new WebSocketServer({ noServer: true });
 
-// Initialize custom SessionManager for debounced saving and timeouts
 SessionManager.init(prisma, Yjs);
 
-// We no longer use y-websocket's default setPersistence.
-// SessionManager natively attached debounced writes at the exact update stream level!
-/*
-setPersistence({ ... }) 
-*/
 
 wss.on('connection', async (conn: any, req: any, { docName }: any) => {
   console.log(`[WS] Connection established for docName: ${docName}`);
   
-  // Custom bindState logic explicitly loaded on connection
+  // 1. establish the connection which internally creates and registers the Y.Doc in the docs map.
+  setupWSConnection(conn, req, { docName, gc: true });
+  
+  const ydoc = docs.get(docName);
+  
+  // 2. fetch Prisma state and safely save the official `ydoc` instance.
+  // yjs native applyUpdate mechanism will automatically broadcast these restored bytes to the newly connected client
   try {
     const session = await prisma.session.findUnique({
       where: { id: docName }
     });
-    const ydoc = docs.get(docName) || new Yjs.Doc();
-    if (session && session.docState) {
+    if (session && session.docState && ydoc) {
       Yjs.applyUpdate(ydoc, session.docState);
     }
   } catch (err) {
     console.error(`[DB] Failed to explicitly bind state for ${docName}:`, err);
   }
 
-  setupWSConnection(conn, req, { docName, gc: true });
-  
-  const ydoc = docs.get(docName);
   if (ydoc) {
     SessionManager.handleConnection(conn, docName, ydoc);
   }
@@ -75,7 +71,7 @@ server.on('upgrade', (request, socket, head) => {
   if (url.pathname.startsWith('/api/collaboration/ws/')) {
     const docName = url.pathname.split('/').pop() || 'default';
     console.log(`[COLLAB-WS] Handling upgrade for docName: ${docName}`);
-    wss.handleUpgrade(request, socket, head, (ws: any) => {
+    wss.handleUpgrade(request, socket, head, (ws) => {
       wss.emit('connection', ws, request, { docName });
     });
   } else {
