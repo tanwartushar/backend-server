@@ -1,0 +1,22 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["driverAdapters"] 
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model Session {
+  id           String    @id @default(uuid())
+  user1Id      String    
+  user2Id      String    
+  questionId   String    
+  language     String
+  status       String    @default("active") // "active" | "terminated"
+  docState     Bytes?    // Serialized Y.Doc state
+  createdAt    DateTime  @default(now())
+  terminatedAt DateTime?
+}
