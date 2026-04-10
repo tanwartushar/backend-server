@@ -18,4 +18,5 @@ model Session {
   terminatedAt DateTime?
   /// (deliberate, timeout, inactivity, etc.)
   terminateReason String?
+  terminatedBy    String?
 }

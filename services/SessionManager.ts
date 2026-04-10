@@ -15,6 +15,7 @@ const DEBOUNCE_WAIT = 2000; // 2 seconds
 
 interface ActiveSessionData {
   connections: Set<WebSocket>;
+  userMap: Map<WebSocket, string>;
   gracePeriodTimeout?: NodeJS.Timeout | undefined;
   inactivityTimeout?: NodeJS.Timeout | undefined;
   cleanup?: (() => void) | undefined;
@@ -34,11 +35,11 @@ export class SessionManager {
     this.Yjs = yjsLib;
   }
 
-  static handleConnection(ws: WebSocket, docName: string, ydoc: any) {
+  static handleConnection(ws: WebSocket, docName: string, ydoc: any, userId: string) {
     if (!this.prisma) throw new Error("SessionManager not initialized with prisma!");
 
     if (!activeSessions.has(docName)) {
-      activeSessions.set(docName, { connections: new Set(), ydoc });
+      activeSessions.set(docName, { connections: new Set(), userMap: new Map(), ydoc });
       
       const sessionData = activeSessions.get(docName)!;
 
@@ -70,6 +71,7 @@ export class SessionManager {
 
     const sessionData = activeSessions.get(docName)!;
     sessionData.connections.add(ws);
+    sessionData.userMap.set(ws, userId);
 
     // If a user connects, clear any ongoing disconnection grace period!
     if (sessionData.gracePeriodTimeout) {
@@ -79,7 +81,9 @@ export class SessionManager {
     }
 
     ws.on('close', () => {
+      const droppedUser = sessionData.userMap.get(ws) || 'unknown';
       sessionData.connections.delete(ws);
+      sessionData.userMap.delete(ws);
       console.log(`[SessionManager] ${docName}: Client disconnected. Remaining: ${sessionData.connections.size}`);
 
       // Do not start accidental-disconnect grace while a deliberate terminate is flushing/closing sockets.
@@ -91,7 +95,7 @@ export class SessionManager {
         if (!sessionData.gracePeriodTimeout) {
           console.log(`[SessionManager] ${docName}: Starting 2-minute disconnect grace period.`);
           sessionData.gracePeriodTimeout = setTimeout(() => {
-            this.terminateSession(docName, 'Peer disconnected and did not return in time.');
+            this.terminateSession(docName, 'Your peer did not connect within the time limit. Returning to dashboard', droppedUser, 'Timeout');
           }, GRACE_PERIOD);
         }
       }
@@ -108,11 +112,11 @@ export class SessionManager {
 
     sessionData.inactivityTimeout = setTimeout(() => {
       console.log(`[SessionManager] ${docName}: 30 minutes of inactivity. Terminating.`);
-      this.terminateSession(docName, 'Session timed out due to 30 minutes of inactivity.');
+      this.terminateSession(docName, 'Session timed out due to 30 minutes of inactivity.', 'system', 'Inactive');
     }, INACTIVITY_TIMEOUT);
   }
 
-  static async terminateSession(docName: string, reason: string) {
+  static async terminateSession(docName: string, reason: string, terminatedBy?: string, terminationReason?: string) {
     const sessionData = activeSessions.get(docName);
     console.log(`[SessionManager] Terminating session ${docName}. Reason: ${reason}`);
 
@@ -158,7 +162,8 @@ export class SessionManager {
         data: {
           status: 'terminated',
           terminatedAt: new Date(),
-          terminateReason: reason,
+          terminateReason: terminationReason || 'Unknown',
+          terminatedBy: terminatedBy || null,
         },
       });
     } catch (e) {

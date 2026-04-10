@@ -147,19 +147,18 @@ router.get('/sessions/active', async (req: Request, res: Response): Promise<any>
             return res.status(401).json({ error: 'Unauthorized' });
         }
 
-        const activeSession = await prisma.session.findFirst({
+        const latestSession = await prisma.session.findFirst({
             where: {
-                OR: [ { user1Id: authUserId }, { user2Id: authUserId } ],
-                status: 'active'
+                OR: [ { user1Id: authUserId }, { user2Id: authUserId } ]
             },
             orderBy: { createdAt: 'desc' }
         });
 
-        if (!activeSession) {
+        if (!latestSession) {
             return res.status(204).send();
         }
 
-        return res.status(200).json(activeSession);
+        return res.status(200).json(latestSession);
     } catch (error) {
         console.error('Failed to get active session:', error);
         return res.status(500).json({ error: 'Internal server error' });
@@ -238,7 +237,9 @@ router.patch('/sessions/:id/terminate', async (req: Request, res: Response): Pro
         // Deliberate termination: end for both users immediately with the shared UI copy.
         await SessionManager.terminateSession(
             sessionId,
-            'This Session has been ended by a peer. Returning to Dashboard.',
+            'This session was ended by your peer. Returning to the dashboard',
+            authUserId,
+            'Deliberate'
         );
 
         return res.status(200).json({ message: 'Session terminated' });

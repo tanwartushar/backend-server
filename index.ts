@@ -64,7 +64,8 @@ wss.on('connection', async (conn: any, req: any, { docName }: any) => {
   }
 
   if (ydoc) {
-    SessionManager.handleConnection(conn, docName, ydoc);
+    const userId = req.headers['x-user-id']?.toString() || 'anonymous';
+    SessionManager.handleConnection(conn, docName, ydoc, userId);
   }
 });
 
