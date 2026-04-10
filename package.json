@@ -6,7 +6,8 @@
     "scripts": {
         "build": "prisma generate && tsc",
         "start": "node dist/index.js",
-        "dev": "ts-node index.ts"
+        "dev": "tsx watch src/index.ts",
+        "postinstall": "prisma generate"
     },
     "dependencies": {
         "@prisma/adapter-pg": "^7.7.0",
