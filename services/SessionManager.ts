@@ -19,6 +19,8 @@ interface ActiveSessionData {
   inactivityTimeout?: NodeJS.Timeout | undefined;
   cleanup?: (() => void) | undefined;
   ydoc: any;
+  /** Set while deliberate/system termination is in progress (before sockets are closed). */
+  terminating?: boolean;
 }
 
 const activeSessions = new Map<string, ActiveSessionData>();
@@ -43,11 +45,13 @@ export class SessionManager {
       const debouncedSave = debounce(async () => {
         const state = this.Yjs.encodeStateAsUpdate(ydoc);
         try {
+          // Because we securely create the session on match via POST /sessions, it exists!
           await this.prisma.session.update({
             where: { id: docName },
             data: { docState: Buffer.from(state) }
           });
         } catch (e) {
+          // Ignore failures for docs that might be terminated already
         }
       }, DEBOUNCE_WAIT);
 
@@ -67,7 +71,7 @@ export class SessionManager {
     const sessionData = activeSessions.get(docName)!;
     sessionData.connections.add(ws);
 
-    // if a user connects, clear any ongoing disconnection grace period
+    // If a user connects, clear any ongoing disconnection grace period!
     if (sessionData.gracePeriodTimeout) {
       clearTimeout(sessionData.gracePeriodTimeout);
       sessionData.gracePeriodTimeout = undefined;
@@ -77,7 +81,12 @@ export class SessionManager {
     ws.on('close', () => {
       sessionData.connections.delete(ws);
       console.log(`[SessionManager] ${docName}: Client disconnected. Remaining: ${sessionData.connections.size}`);
-      
+
+      // Do not start accidental-disconnect grace while a deliberate terminate is flushing/closing sockets.
+      if (sessionData.terminating) {
+        return;
+      }
+
       if (sessionData.connections.size < 2) {
         if (!sessionData.gracePeriodTimeout) {
           console.log(`[SessionManager] ${docName}: Starting 2-minute disconnect grace period.`);
@@ -108,6 +117,7 @@ export class SessionManager {
     console.log(`[SessionManager] Terminating session ${docName}. Reason: ${reason}`);
 
     if (sessionData) {
+      sessionData.terminating = true;
       if (sessionData.gracePeriodTimeout) {
          clearTimeout(sessionData.gracePeriodTimeout);
          sessionData.gracePeriodTimeout = undefined;
@@ -118,11 +128,11 @@ export class SessionManager {
       }
       if (sessionData.cleanup) sessionData.cleanup();
 
-      // broadcast termination CRDT signal directly to clients
+      // Broadcast termination CRDT signal directly to clients
       sessionData.ydoc.getMap('sys').set('status', 'terminated');
       sessionData.ydoc.getMap('sys').set('reason', reason);
 
-      // forcefully persist document update immediately before dropping connections
+      // Forcefully persist document update immediately before dropping connections
       try {
          const state = SessionManager.Yjs.encodeStateAsUpdate(sessionData.ydoc);
          await SessionManager.prisma.session.update({
@@ -133,7 +143,7 @@ export class SessionManager {
          console.error(`[SessionManager] Flush DB save failed for ${docName}:`, e);
       }
 
-      // critical: Wait 1000ms to allow TCP flush to transmit the map updates to clients!
+      // Critical: Wait 1000ms to allow TCP flush to transmit the map updates to clients!
       setTimeout(() => {
         for (const socket of sessionData.connections) {
           socket.close(4000, reason); 
