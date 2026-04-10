@@ -36,24 +36,24 @@ const wss = new WebSocketServer({ noServer: true });
 
 SessionManager.init(prisma, Yjs);
 
-
 wss.on('connection', async (conn: any, req: any, { docName }: any) => {
   console.log(`[WS] Connection established for docName: ${docName}`);
 
-  // 1. establish the connection which internally creates and registers the Y.Doc in the docs map.
+  // 1. establish the connection which internally creates and registers the Y.Doc
   setupWSConnection(conn, req, { docName, gc: true });
 
   const ydoc = docs.get(docName);
 
-  // 2. fetch Prisma state and safely save the official `ydoc` instance.
+  // 2. fetch Prisma state and save the ydoc instance.
   try {
     const session = await prisma.session.findUnique({
       where: { id: docName }
     });
+
     if (session && session.status === 'terminated') {
-        console.log(`[WS] Rejecting connection because session is terminated: ${docName}`);
-        conn.close(4000, 'Session has been permanently terminated.');
-        return;
+      console.log(`[WS] Rejecting connection because session is terminated: ${docName}`);
+      conn.close(4000, 'Session has been permanently terminated.');
+      return;
     }
 
     if (session && session.docState && ydoc) {
@@ -64,7 +64,8 @@ wss.on('connection', async (conn: any, req: any, { docName }: any) => {
   }
 
   if (ydoc) {
-    const userId = req.headers['x-user-id']?.toString() || 'anonymous';
+    const url = new URL(req.url || '', `http://${req.headers.host}`);
+    const userId = url.searchParams.get('userId') || req.headers['x-user-id']?.toString() || 'anonymous';
     SessionManager.handleConnection(conn, docName, ydoc, userId);
   }
 });
