@@ -155,7 +155,11 @@ export class SessionManager {
     try {
       await SessionManager.prisma.session.update({
         where: { id: docName },
-        data: { status: 'terminated', terminatedAt: new Date() }
+        data: {
+          status: 'terminated',
+          terminatedAt: new Date(),
+          terminateReason: reason,
+        },
       });
     } catch (e) {
       console.error(`[SessionManager] Failed to update DB status for ${docName}`, e);

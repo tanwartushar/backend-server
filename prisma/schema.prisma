@@ -16,4 +16,6 @@ model Session {
   docState     Bytes?    // Serialized Y.Doc state
   createdAt    DateTime  @default(now())
   terminatedAt DateTime?
+  /// (deliberate, timeout, inactivity, etc.)
+  terminateReason String?
 }
