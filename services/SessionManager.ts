@@ -137,26 +137,21 @@ export class SessionManager {
       sessionData.ydoc.getMap('sys').set('terminateReason', terminationReason || 'Unknown');
     }
 
-    // 1. Force the database status to terminated FIRST to guarantee lock release
+    // 1. Force the database status to terminated FIRST. Native SQL completely bypasses any out-of-sync Prisma bindings!
     try {
-      await SessionManager.prisma.session.update({
-        where: { id: docName },
-        data: {
-          status: 'terminated',
-          terminatedAt: new Date(),
-          terminateReason: terminationReason || 'Unknown',
-          terminatedBy: terminatedBy || null,
-        },
-      });
+      await SessionManager.prisma.$executeRaw`
+        UPDATE "Session" 
+        SET "status" = 'terminated', 
+            "terminateReason" = ${terminationReason || 'Unknown'},
+            "terminatedBy" = ${terminatedBy || null}
+        WHERE "id" = ${docName}
+      `;
     } catch (e) {
-      console.error(`[SessionManager] Main DB status update failed. Emitting fallback update for ${docName}.`, e);
+      console.error(`[SessionManager] Raw SQL status update failed. Emitting deepest fallback for ${docName}.`, e);
       try {
-        await SessionManager.prisma.session.update({
-          where: { id: docName },
-          data: { status: 'terminated' }
-        });
+        await SessionManager.prisma.$executeRaw`UPDATE "Session" SET "status" = 'terminated' WHERE "id" = ${docName}`;
       } catch (e2) {
-        console.error(`[SessionManager] FATAL fallback DB status update failed!`, e2);
+        console.error(`[SessionManager] FATAL fallback SQL status update failed!`, e2);
       }
     }
 
