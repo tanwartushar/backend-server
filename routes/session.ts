@@ -235,8 +235,11 @@ router.patch('/sessions/:id/terminate', async (req: Request, res: Response): Pro
              return res.status(200).json({ message: 'Session already terminated' });
         }
 
-        // Delegate to SessionManager to blast the update to WebSockets AND the DB!
-        await SessionManager.terminateSession(sessionId, 'User explicitly ended the session.');
+        // Deliberate termination: end for both users immediately with the shared UI copy.
+        await SessionManager.terminateSession(
+            sessionId,
+            'This Session has been ended by a peer. Returning to Dashboard.',
+        );
 
         return res.status(200).json({ message: 'Session terminated' });
     } catch (error) {
