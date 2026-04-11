@@ -31,12 +31,12 @@ type MatchRequestJson = {
 
 type VerifiedPair =
     | {
-          kind: 'ok';
-          sessionId: string;
-          user1Id: string;
-          user2Id: string;
-          language: string;
-      }
+        kind: 'ok';
+        sessionId: string;
+        user1Id: string;
+        user2Id: string;
+        language: string;
+    }
     | { kind: 'verify_failed' }
     | { kind: 'upstream'; httpStatus: number };
 
@@ -149,7 +149,7 @@ router.get('/sessions/active', async (req: Request, res: Response): Promise<any>
 
         const latestSession = await prisma.session.findFirst({
             where: {
-                OR: [ { user1Id: authUserId }, { user2Id: authUserId } ]
+                OR: [{ user1Id: authUserId }, { user2Id: authUserId }]
             },
             orderBy: { createdAt: 'desc' }
         });
@@ -209,32 +209,23 @@ router.patch('/sessions/:id/terminate', async (req: Request, res: Response): Pro
 
         const rawSessionId = req.params['id'];
         const sessionId = typeof rawSessionId === 'string' ? rawSessionId : rawSessionId?.[0];
-        
+
         if (!sessionId) {
             return res.status(400).json({ error: 'Invalid session id' });
         }
 
-        const session = await prisma.session.findUnique({
-            where: { id: sessionId }
-        });
+        const session = await prisma.session.findUnique({ where: { id: sessionId } });
 
         if (!session) {
             return res.status(404).json({ error: 'Session not found' });
         }
-
-        if (session.status === 'terminated') {
-            return res.status(403).json({ error: 'Session permanently terminated' });
-        }
-
         if (session.user1Id !== authUserId && session.user2Id !== authUserId) {
             return res.status(403).json({ error: 'Forbidden' });
         }
-
         if (session.status === 'terminated') {
-             return res.status(200).json({ message: 'Session already terminated' });
+            return res.status(200).json({ message: 'Session already terminated' });
         }
 
-        // Deliberate termination: end for both users immediately with the shared UI copy.
         await SessionManager.terminateSession(
             sessionId,
             'This session was ended by your peer. Returning to the dashboard',

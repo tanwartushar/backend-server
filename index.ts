@@ -15,6 +15,7 @@ import type * as Y from 'yjs';
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const Yjs = require('yjs');
+
 import sessionRouter from './routes/session.js';
 import { SessionManager } from './services/SessionManager.js';
 

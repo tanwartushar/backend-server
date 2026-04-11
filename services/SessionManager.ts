@@ -137,7 +137,7 @@ export class SessionManager {
       sessionData.ydoc.getMap('sys').set('terminateReason', terminationReason || 'Unknown');
     }
 
-    // 1. Force the database status to terminated FIRST. Native SQL completely bypasses any out-of-sync Prisma bindings!
+    // force the database status to terminated
     try {
       await SessionManager.prisma.$executeRaw`
         UPDATE "Session" 
@@ -156,7 +156,7 @@ export class SessionManager {
     }
 
     if (sessionData) {
-      // 2. Persist the final document CRDT buffer securely immediately after lock
+      // persist the final document CRDT buffer securely immediately after lock
       try {
         const state = SessionManager.Yjs.encodeStateAsUpdate(sessionData.ydoc);
         await SessionManager.prisma.session.update({
